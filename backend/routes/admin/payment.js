@@ -28,7 +28,9 @@ const router = express.Router();
 // File is located in backend root.
 // payment.js is located in backend/routes.
 
-const serviceAccount = require('./packet-pros-a52f7-firebase-adminsdk-fbsvc-c2b0b4f7cd.json');
+const serviceAccount = JSON.parse(
+  process.env.FIREBASE_SERVICE_ACCOUNT
+);
 
 // ======================================================
 // FIREBASE ADMIN INITIALIZATION

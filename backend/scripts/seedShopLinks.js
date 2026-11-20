@@ -30,9 +30,8 @@ dotenv.config({
 const PROJECT_ID = "packet-pros-a52f7";
 
 // Your existing Firebase Admin service account JSON
-const SERVICE_ACCOUNT_PATH = path.resolve(
-  __dirname,
-  "../routes/admin/packet-pros-a52f7-firebase-adminsdk-fbsvc-c2b0b4f7cd.json"
+const SERVICE_ACCOUNT_PATH = JSON.parse(
+  process.env.FIREBASE_SERVICE_ACCOUNT
 );
 
 // =====================================================
