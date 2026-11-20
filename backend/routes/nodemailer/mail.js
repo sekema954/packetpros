@@ -1,5 +1,4 @@
 const nodemailer = require('nodemailer');
-
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -7,5 +6,4 @@ const transporter = nodemailer.createTransport({
     pass: process.env.VITE_PASSWORD,
   },
 });
-
 module.exports = transporter;
