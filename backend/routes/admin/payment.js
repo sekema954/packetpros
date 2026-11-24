@@ -1,4 +1,3 @@
-
 const express = require("express");
 const crypto = require("crypto");
 const fs = require("fs");
@@ -29,8 +28,8 @@ const router = express.Router();
 // ======================================================
 
 // Render: FIREBASE_SERVICE_ACCOUNT contains the full JSON.
-// Local VS Code: FIREBASE_SERVICE_ACCOUNT contains the
-// filename of a JSON file stored in the backend directory.
+// Local: FIREBASE_SERVICE_ACCOUNT contains the filename
+// or absolute path of the Firebase service account JSON.
 
 function loadServiceAccount() {
   const value = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
@@ -41,6 +40,7 @@ function loadServiceAccount() {
     );
   }
 
+  // Render environment variable containing JSON.
   if (value.startsWith("{")) {
     try {
       return JSON.parse(value);
@@ -54,9 +54,10 @@ function loadServiceAccount() {
     }
   }
 
+  // Local VS Code service account file.
   const filePath = path.isAbsolute(value)
-  ? value
-  : path.resolve(__dirname, value);
+    ? value
+    : path.resolve(__dirname, value);
 
   if (!fs.existsSync(filePath)) {
     throw new Error(
@@ -118,8 +119,12 @@ console.log("[PAYMENT] Firebase Admin project:", {
 // ENVIRONMENT VARIABLES
 // ======================================================
 
-const HIGHLEVEL_API_TOKEN = process.env.HIGHLEVEL_API_TOKEN;
-const HIGHLEVEL_LOCATION_ID = process.env.HIGHLEVEL_LOCATION_ID;
+const HIGHLEVEL_API_TOKEN =
+  process.env.HIGHLEVEL_API_TOKEN;
+
+const HIGHLEVEL_LOCATION_ID =
+  process.env.HIGHLEVEL_LOCATION_ID;
+
 const HIGHLEVEL_WEBHOOK_SECRET =
   process.env.HIGHLEVEL_WEBHOOK_SECRET;
 
@@ -139,10 +144,17 @@ const HIGHLEVEL_ADVANCED_CHECKOUT_URL =
 // COURSE CONFIGURATION
 // ======================================================
 
+// IMPORTANT:
+// productId must match CHECKOUT_BEGINNER_PRODUCT_ID and
+// CHECKOUT_ADVANCED_PRODUCT_ID in PacketPros.tsx.
+//
+// courseId is the membership course ID.
+// productId is the HighLevel payment product ID.
+
 const COURSES = {
   beginner: {
     courseId: "a3dc430d-234d-47e7-ba3d-781c8cae6560",
-    productId: "6abdd23c5a7eadf56fe273d8",
+    productId: "6acb9be8c0e70c7fefb73dc2",
     name: "Beginner Network Engineering",
     expectedAmount: 0,
     currency: "usd",
@@ -152,7 +164,7 @@ const COURSES = {
 
   advanced: {
     courseId: "95697c98-ace9-4c2e-a14e-45d1547061df",
-    productId: "6abdd2d062714ba46bd532eb",
+    productId: "6acd43bcc0e70c7fefb741cb",
     name: "Advanced Network Engineering",
     expectedAmount: 0,
     currency: "usd",
@@ -188,9 +200,12 @@ function normalizeId(value) {
     : String(value).trim();
 }
 
+// Updated product ID lookup.
 function getCourseByProductId(productId) {
+  const normalizedProductId = normalizeId(productId);
+
   return Object.entries(COURSES).find(
-    ([, course]) => course.productId === String(productId)
+    ([, course]) => course.productId === normalizedProductId
   );
 }
 
@@ -312,6 +327,7 @@ async function highLevelRequest(url, options = {}) {
 
   const response = await fetch(url, {
     ...options,
+
     headers: {
       Authorization: `Bearer ${HIGHLEVEL_API_TOKEN}`,
       Version: "v3",
@@ -319,6 +335,7 @@ async function highLevelRequest(url, options = {}) {
       "Content-Type": "application/json",
       ...options.headers,
     },
+
     signal: AbortSignal.timeout(15000),
   });
 
@@ -331,7 +348,9 @@ async function highLevelRequest(url, options = {}) {
       ? JSON.parse(responseText)
       : {};
   } catch {
-    data = { rawResponse: responseText };
+    data = {
+      rawResponse: responseText,
+    };
   }
 
   if (!response.ok) {
@@ -383,7 +402,9 @@ async function getVerifiedTransaction(transactionId) {
 
   const data = await highLevelRequest(
     url.toString(),
-    { method: "GET" }
+    {
+      method: "GET",
+    }
   );
 
   const tx =
@@ -464,6 +485,7 @@ function getTransactionRefundedAmount(transaction) {
 
 // ======================================================
 // GET STUDENT ENROLLMENTS
+// GET /api/my-enrollments
 // ======================================================
 
 router.get(
@@ -486,25 +508,21 @@ router.get(
         })
       );
 
-      const activeEnrollments =
-        enrollments.filter(
-          (enrollment) =>
-            enrollment.status === "active" ||
-            enrollment.active === true
-        );
+      const activeEnrollments = enrollments.filter(
+        (enrollment) =>
+          enrollment.status === "active" ||
+          enrollment.active === true
+      );
 
       return res.json({
         success: true,
         enrollments: activeEnrollments,
       });
     } catch (error) {
-      console.error(
-        "Enrollment lookup error:",
-        {
-          code: error.code,
-          message: error.message,
-        }
-      );
+      console.error("Enrollment lookup error:", {
+        code: error.code,
+        message: error.message,
+      });
 
       return sendError(
         res,
@@ -517,6 +535,7 @@ router.get(
 
 // ======================================================
 // CREATE CHECKOUT SESSION
+// POST /api/highlevel/create-checkout-session
 // ======================================================
 
 router.post(
@@ -524,7 +543,16 @@ router.post(
   requireFirebaseAuth,
   async (req, res) => {
     try {
-      const { productId } = req.body;
+      // Updated product ID normalization.
+      const productId = normalizeId(req.body?.productId);
+
+      // Debugging for Render logs.
+      console.log("[COURSE CHECKOUT]", {
+        receivedProductId: productId,
+        validProductIds: Object.values(COURSES).map(
+          (course) => course.productId
+        ),
+      });
 
       if (!productId) {
         return sendError(
@@ -534,8 +562,7 @@ router.post(
         );
       }
 
-      const courseEntry =
-        getCourseByProductId(productId);
+      const courseEntry = getCourseByProductId(productId);
 
       if (!courseEntry) {
         return sendError(
@@ -545,8 +572,7 @@ router.post(
         );
       }
 
-      const [courseKey, course] =
-        courseEntry;
+      const [courseKey, course] = courseEntry;
 
       if (!course.checkoutUrl) {
         return sendError(
@@ -557,17 +583,18 @@ router.post(
       }
 
       const uid = req.firebaseUser.uid;
+
       const email = normalizeEmail(
         req.firebaseUser.email
       );
 
-      const existingEnrollment =
-        await db
-          .collection("users")
-          .doc(uid)
-          .collection("enrollments")
-          .doc(courseKey)
-          .get();
+      // Check whether the student already owns this course.
+      const existingEnrollment = await db
+        .collection("users")
+        .doc(uid)
+        .collection("enrollments")
+        .doc(courseKey)
+        .get();
 
       if (
         existingEnrollment.exists &&
@@ -580,15 +607,14 @@ router.post(
         });
       }
 
-      const checkoutSessionId =
-        crypto.randomUUID();
+      // Generate a unique checkout session.
+      const checkoutSessionId = crypto.randomUUID();
 
       const expiresAt =
         Date.now() +
-        CHECKOUT_EXPIRATION_MINUTES *
-          60 *
-          1000;
+        CHECKOUT_EXPIRATION_MINUTES * 60 * 1000;
 
+      // Save pending checkout in Firestore.
       await db
         .collection("pendingCheckouts")
         .doc(checkoutSessionId)
@@ -600,20 +626,15 @@ router.post(
           courseId: course.courseId,
           productId: course.productId,
           courseName: course.name,
-          expectedAmount:
-            course.expectedAmount,
+          expectedAmount: course.expectedAmount,
           currency: course.currency,
           status: "pending",
-          createdAt:
-            FieldValue.serverTimestamp(),
-          expiresAt:
-            Timestamp.fromMillis(
-              expiresAt
-            ),
+          createdAt: FieldValue.serverTimestamp(),
+          expiresAt: Timestamp.fromMillis(expiresAt),
         });
 
-      const checkoutUrl =
-        new URL(course.checkoutUrl);
+      // Construct the HighLevel payment URL.
+      const checkoutUrl = new URL(course.checkoutUrl);
 
       checkoutUrl.searchParams.set(
         "checkoutSessionId",
@@ -627,18 +648,14 @@ router.post(
 
       return res.json({
         success: true,
-        checkoutUrl:
-          checkoutUrl.toString(),
+        checkoutUrl: checkoutUrl.toString(),
         checkoutSessionId,
       });
     } catch (error) {
-      console.error(
-        "Checkout creation error:",
-        {
-          code: error.code,
-          message: error.message,
-        }
-      );
+      console.error("Checkout creation error:", {
+        code: error.code,
+        message: error.message,
+      });
 
       return sendError(
         res,
@@ -651,11 +668,13 @@ router.post(
 
 // ======================================================
 // GHL PAYMENT WEBHOOK
+// POST /api/highlevel/payment
 // ======================================================
 
 router.post(
   "/highlevel/payment",
   async (req, res) => {
+    // Validate webhook configuration.
     if (!HIGHLEVEL_WEBHOOK_SECRET) {
       console.error(
         "HIGHLEVEL_WEBHOOK_SECRET is not configured."
@@ -668,6 +687,7 @@ router.post(
       );
     }
 
+    // Validate webhook authentication.
     if (!verifyWebhookSecret(req)) {
       return sendError(
         res,
@@ -679,6 +699,7 @@ router.post(
     try {
       const body = req.body || {};
 
+      // Extract transaction ID.
       const transactionId = normalizeId(
         body.transactionId ||
         body.transaction_id ||
@@ -686,6 +707,7 @@ router.post(
         body.payment?.id
       );
 
+      // Extract product ID.
       const productId = normalizeId(
         body.productId ||
         body.product_id ||
@@ -693,15 +715,12 @@ router.post(
         body.customFields?.productId
       );
 
-      const checkoutSessionId =
-        normalizeId(
-          getCheckoutSessionId(req)
-        );
+      // Extract checkout session ID.
+      const checkoutSessionId = normalizeId(
+        getCheckoutSessionId(req)
+      );
 
-      if (
-        !transactionId ||
-        !productId
-      ) {
+      if (!transactionId || !productId) {
         return sendError(
           res,
           400,
@@ -709,10 +728,8 @@ router.post(
         );
       }
 
-      const courseEntry =
-        getCourseByProductId(
-          productId
-        );
+      // Find the course using the corrected payment product ID.
+      const courseEntry = getCourseByProductId(productId);
 
       if (!courseEntry) {
         return sendError(
@@ -722,13 +739,11 @@ router.post(
         );
       }
 
-      const [courseKey, course] =
-        courseEntry;
+      const [courseKey, course] = courseEntry;
 
+      // Firestore payment event reference.
       const eventRef = db
-        .collection(
-          "coursePaymentEvents"
-        )
+        .collection("coursePaymentEvents")
         .doc(transactionId);
 
       const recordEvent = (
@@ -742,36 +757,37 @@ router.post(
             courseKey,
             status,
             ...extra,
-            updatedAt:
-              FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           },
-          { merge: true }
+          {
+            merge: true,
+          }
         );
 
-      // Check if payment was already processed.
+      // ==================================================
+      // CHECK FOR DUPLICATE PAYMENT
+      // ==================================================
+
       const paymentRef = db
-        .collection(
-          "highlevelPayments"
-        )
+        .collection("highlevelPayments")
         .doc(transactionId);
 
-      const existingPayment =
-        await paymentRef.get();
+      const existingPayment = await paymentRef.get();
 
-      if (
-        existingPayment.exists
-      ) {
+      if (existingPayment.exists) {
         return res.json({
           success: true,
           alreadyProcessed: true,
         });
       }
 
-      // Verify transaction directly with GHL.
-      const transaction =
-        await getVerifiedTransaction(
-          transactionId
-        );
+      // ==================================================
+      // VERIFY PAYMENT DIRECTLY WITH HIGHLEVEL
+      // ==================================================
+
+      const transaction = await getVerifiedTransaction(
+        transactionId
+      );
 
       if (
         !transaction ||
@@ -784,20 +800,17 @@ router.post(
         );
       }
 
-      const transactionStatus =
-        getTransactionStatus(
-          transaction
-        );
+      // ==================================================
+      // VERIFY PAYMENT STATUS
+      // ==================================================
 
-      if (
-        transactionStatus !==
-        "succeeded"
-      ) {
+      const transactionStatus = getTransactionStatus(
+        transaction
+      );
+
+      if (transactionStatus !== "succeeded") {
         await recordEvent(
-          `ghl_${
-            transactionStatus ||
-            "unknown"
-          }`
+          `ghl_${transactionStatus || "unknown"}`
         );
 
         return sendError(
@@ -807,14 +820,12 @@ router.post(
         );
       }
 
-      if (
-        getTransactionRefundedAmount(
-          transaction
-        ) > 0
-      ) {
-        await recordEvent(
-          "refunded"
-        );
+      // ==================================================
+      // CHECK FOR REFUNDS
+      // ==================================================
+
+      if (getTransactionRefundedAmount(transaction) > 0) {
+        await recordEvent("refunded");
 
         return sendError(
           res,
@@ -823,25 +834,23 @@ router.post(
         );
       }
 
-      const transactionAmount =
-        getTransactionAmount(
-          transaction
-        );
+      // ==================================================
+      // VERIFY PAYMENT AMOUNT
+      // ==================================================
+
+      const transactionAmount = getTransactionAmount(
+        transaction
+      );
 
       if (
         transactionAmount === null ||
-        transactionAmount !==
-          Number(
-            course.expectedAmount
-          )
+        transactionAmount !== Number(course.expectedAmount)
       ) {
         await recordEvent(
           "amount_mismatch",
           {
-            amount:
-              transactionAmount,
-            expectedAmount:
-              course.expectedAmount,
+            amount: transactionAmount,
+            expectedAmount: course.expectedAmount,
           }
         );
 
@@ -852,14 +861,14 @@ router.post(
         );
       }
 
+      // ==================================================
+      // VERIFY PAYMENT CURRENCY
+      // ==================================================
+
       if (
-        getTransactionCurrency(
-          transaction
-        ) !== course.currency
+        getTransactionCurrency(transaction) !== course.currency
       ) {
-        await recordEvent(
-          "currency_mismatch"
-        );
+        await recordEvent("currency_mismatch");
 
         return sendError(
           res,
@@ -868,21 +877,22 @@ router.post(
         );
       }
 
-      const transactionSourceId =
-        getTransactionSourceId(
-          transaction
-        );
+      // ==================================================
+      // VERIFY PAYMENT SOURCE
+      // ==================================================
+
+      const transactionSourceId = getTransactionSourceId(
+        transaction
+      );
 
       if (
         !course.sourceId ||
-        transactionSourceId !==
-          course.sourceId
+        transactionSourceId !== course.sourceId
       ) {
         await recordEvent(
           "source_mismatch",
           {
-            sourceId:
-              transactionSourceId,
+            sourceId: transactionSourceId,
           }
         );
 
@@ -893,67 +903,53 @@ router.post(
         );
       }
 
-      const transactionEmail =
-        getTransactionEmail(
-          transaction
-        );
+      // ==================================================
+      // MATCH PAYMENT TO PACKETPROS USER
+      // ==================================================
 
-      // Match the payment to the PacketPros user.
+      const transactionEmail = getTransactionEmail(
+        transaction
+      );
+
       let uid = null;
       let accountEmail = null;
       let sessionRef = null;
 
-      if (
-        checkoutSessionId
-      ) {
+      // First attempt to match the checkout session.
+      if (checkoutSessionId) {
         const candidateRef = db
-          .collection(
-            "pendingCheckouts"
-          )
-          .doc(
-            checkoutSessionId
-          );
+          .collection("pendingCheckouts")
+          .doc(checkoutSessionId);
 
-        const sessionSnapshot =
-          await candidateRef.get();
+        const sessionSnapshot = await candidateRef.get();
 
-        if (
-          sessionSnapshot.exists
-        ) {
-          const session =
-            sessionSnapshot.data();
+        if (sessionSnapshot.exists) {
+          const session = sessionSnapshot.data();
 
           const sessionValid =
-            session.status ===
-              "pending" &&
-            session.productId ===
-              course.productId &&
-            session.courseKey ===
-              courseKey &&
-            (!session.expiresAt ||
-              session.expiresAt.toMillis() >=
-                Date.now());
+            session.status === "pending" &&
+            session.productId === course.productId &&
+            session.courseKey === courseKey &&
+            (
+              !session.expiresAt ||
+              session.expiresAt.toMillis() >= Date.now()
+            );
 
           if (sessionValid) {
             uid = session.uid;
-            accountEmail =
-              normalizeEmail(
-                session.email
-              );
-            sessionRef =
-              candidateRef;
+            accountEmail = normalizeEmail(session.email);
+            sessionRef = candidateRef;
           }
         }
       }
 
-      // Fall back to the verified transaction email.
+      // ==================================================
+      // FALLBACK: MATCH BY TRANSACTION EMAIL
+      // ==================================================
+
       if (!uid) {
-        if (
-          !transactionEmail
-        ) {
-          await recordEvent(
-            "no_email"
-          );
+        if (!transactionEmail) {
+          await recordEvent("no_email");
 
           return sendError(
             res,
@@ -963,32 +959,24 @@ router.post(
         }
 
         try {
-          const user =
-            await auth.getUserByEmail(
-              transactionEmail
-            );
+          const user = await auth.getUserByEmail(
+            transactionEmail
+          );
 
           uid = user.uid;
-          accountEmail =
-            normalizeEmail(
-              user.email
-            );
+          accountEmail = normalizeEmail(user.email);
         } catch {
           await recordEvent(
             "no_matching_user",
             {
-              email:
-                transactionEmail,
+              email: transactionEmail,
             }
           );
 
-          return res
-            .status(202)
-            .json({
-              success: true,
-              enrollmentCreated:
-                false,
-            });
+          return res.status(202).json({
+            success: true,
+            enrollmentCreated: false,
+          });
         }
       }
 
@@ -996,94 +984,81 @@ router.post(
       // GRANT COURSE ENROLLMENT
       // ==================================================
 
-      const enrollmentRef =
-        db
-          .collection(
-            "users"
-          )
-          .doc(uid)
-          .collection(
-            "enrollments"
-          )
-          .doc(courseKey);
+      const enrollmentRef = db
+        .collection("users")
+        .doc(uid)
+        .collection("enrollments")
+        .doc(courseKey);
 
-      const batch =
-        db.batch();
+      const batch = db.batch();
+
+      // ==================================================
+      // SAVE VERIFIED PAYMENT
+      // ==================================================
 
       batch.set(
         paymentRef,
         {
           transactionId,
-          checkoutSessionId:
-            checkoutSessionId ||
-            null,
+          checkoutSessionId: checkoutSessionId || null,
           uid,
-          email:
-            accountEmail,
-          paymentEmail:
-            transactionEmail ||
-            null,
-          productId:
-            course.productId,
-          courseId:
-            course.courseId,
+          email: accountEmail,
+          paymentEmail: transactionEmail || null,
+          productId: course.productId,
+          courseId: course.courseId,
           courseKey,
-          courseName:
-            course.name,
-          amount:
-            transactionAmount,
-          currency:
-            course.currency,
-          sourceId:
-            transactionSourceId,
-          status:
-            "succeeded",
-          createdAt:
-            FieldValue.serverTimestamp(),
+          courseName: course.name,
+          amount: transactionAmount,
+          currency: course.currency,
+          sourceId: transactionSourceId,
+          status: "succeeded",
+          createdAt: FieldValue.serverTimestamp(),
         }
       );
+
+      // ==================================================
+      // SAVE ACTIVE ENROLLMENT
+      // ==================================================
 
       batch.set(
         enrollmentRef,
         {
           uid,
-          email:
-            accountEmail,
+          email: accountEmail,
           courseKey,
-          courseId:
-            course.courseId,
-          productId:
-            course.productId,
-          courseName:
-            course.name,
-          status:
-            "active",
-          active:
-            true,
-          paymentTransactionId:
-            transactionId,
-          enrolledAt:
-            FieldValue.serverTimestamp(),
-          updatedAt:
-            FieldValue.serverTimestamp(),
+          courseId: course.courseId,
+          productId: course.productId,
+          courseName: course.name,
+          status: "active",
+          active: true,
+          paymentTransactionId: transactionId,
+          enrolledAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        {
+          merge: true,
+        }
       );
+
+      // ==================================================
+      // COMPLETE PENDING CHECKOUT SESSION
+      // ==================================================
 
       if (sessionRef) {
         batch.update(
           sessionRef,
           {
-            status:
-              "completed",
+            status: "completed",
             transactionId,
-            completedAt:
-              FieldValue.serverTimestamp(),
-            updatedAt:
-              FieldValue.serverTimestamp(),
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           }
         );
       }
+
+      // ==================================================
+      // UPDATE PAYMENT EVENT
+      // ==================================================
 
       batch.set(
         eventRef,
@@ -1092,14 +1067,15 @@ router.post(
           productId,
           courseKey,
           uid,
-          status:
-            "completed",
-          updatedAt:
-            FieldValue.serverTimestamp(),
+          status: "completed",
+          updatedAt: FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        {
+          merge: true,
+        }
       );
 
+      // Commit all Firestore writes together.
       await batch.commit();
 
       console.log(
@@ -1116,18 +1092,13 @@ router.post(
         message:
           "Payment verified and course enrollment created.",
         courseKey,
-        courseId:
-          course.courseId,
+        courseId: course.courseId,
       });
     } catch (error) {
-      console.error(
-        "HighLevel payment webhook error:",
-        {
-          code: error.code,
-          message:
-            error.message,
-        }
-      );
+      console.error("HighLevel payment webhook error:", {
+        code: error.code,
+        message: error.message,
+      });
 
       return sendError(
         res,
@@ -1137,4 +1108,4 @@ router.post(
     }
   }
 );
-module.exports = router;
+module.exports = router
