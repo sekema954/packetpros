@@ -207,7 +207,7 @@ export const Home = () => {
                     <Icon type="arrow" size={16} />
                   </span>
                 </Link>
-                <button
+                <Link to={"https://api.leadconnectorhq.com/widget/form/eeFl3bbUna9r48PmceIG"}
                   type="button"
                   onClick={() => {
                     videoRef.current?.scrollIntoView({
@@ -219,8 +219,8 @@ export const Home = () => {
                   <span className="w-6 h-6 rounded-full bg-[#7C3AED] grid place-items-center">
                     <Book/>
                   </span>
-                  Book a meeting
-                </button>
+                  Apply Now
+                </Link>
               </div>
               {/* trust */}
               <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-9 text-[12px] text-[#AAA0C0]">

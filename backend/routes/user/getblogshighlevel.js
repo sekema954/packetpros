@@ -1,4 +1,3 @@
-
 const express = require("express");
 require("dotenv").config();
 
@@ -15,6 +14,13 @@ const headers = {
   Authorization: `Bearer ${API_TOKEN}`,
   Accept: "application/json",
   Version: "2021-07-28",
+};
+
+// The "Get Blog Post by ID" endpoint only accepts Version: v3.
+// It is the endpoint that returns the article body (rawHTML).
+const detailHeaders = {
+  ...headers,
+  Version: "v3",
 };
 
 // Validate environment configuration
@@ -114,7 +120,8 @@ router.get("/", async (req, res) => {
 
 // --------------------------------------------------
 // GET /api/blogs/post/:postId
-// Get ONE post by its actual HighLevel post ID.
+// Get ONE post by its actual HighLevel post ID,
+// including its body (rawHTML).
 //
 // IMPORTANT:
 // This route is deliberately different from /api/blogs.
@@ -142,7 +149,8 @@ router.get("/post/:postId", async (req, res) => {
       `${HIGHLEVEL_API}/blogs/posts/post/` +
       `${encodeURIComponent(postId)}?${params}`;
 
-    const response = await fetch(url, { headers });
+    // Uses Version: v3, which this endpoint requires.
+    const response = await fetch(url, { headers: detailHeaders });
     const data = await response.json();
 
     if (!response.ok) {
@@ -155,9 +163,12 @@ router.get("/post/:postId", async (req, res) => {
       });
     }
 
+    const blog = data.blogPost ?? data.post ?? data.blog ?? data;
+    console.log("HighLevel post detail fields:", Object.keys(blog));
+
     return res.json({
       success: true,
-      blog: data.blogPost ?? data,
+      blog,
     });
   } catch (error) {
     console.error("HighLevel post detail exception:", error);

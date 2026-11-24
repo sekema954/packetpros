@@ -1,6 +1,7 @@
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import DOMPurify from "dompurify";
 import useFetchBlogs, {
   type Blog,
 } from "../hooks/fetchhighlevelblogs";
@@ -109,6 +110,68 @@ const BlogPost = () => {
     [blogs, decodedSlug]
   );
 
+  const postId = blog?._id || blog?.id;
+  const [fullBlog, setFullBlog] = useState<Blog | null>(null);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFullBlog(null);
+    setContentError(null);
+
+    if (!postId) {
+      setContentLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadFullArticle = async () => {
+      setContentLoading(true);
+      try {
+        const response = await fetch(
+          `/api/blogs/post/${encodeURIComponent(postId)}`,
+          { signal: controller.signal, headers: { Accept: "application/json" } }
+        );
+        if (!response.ok) {
+          throw new Error(`Unable to load article (${response.status})`);
+        }
+
+        const data = await response.json();
+        if (data.success === false) {
+          throw new Error(data.message || "Unable to load article");
+        }
+
+        const detail = data.blog ?? data.blogPost ?? data.post ?? data;
+        if (!detail || typeof detail !== "object" || Array.isArray(detail)) {
+          throw new Error("Invalid article detail response");
+        }
+        if (!controller.signal.aborted) setFullBlog(detail as Blog);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setContentError(
+            error instanceof Error ? error.message : "Unable to load article"
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) setContentLoading(false);
+      }
+    };
+
+    void loadFullArticle();
+    return () => controller.abort();
+  }, [postId]);
+
+  const article = fullBlog && blog ? { ...blog, ...fullBlog } : blog;
+  const rawArticleHTML =
+    [article?.rawHTML, article?.content, article?.body].find(
+      (value) => typeof value === "string" && value.trim().length > 0
+    ) || "";
+  const safeArticleHTML = useMemo(
+    () => DOMPurify.sanitize(rawArticleHTML),
+    [rawArticleHTML]
+  );
+
   const relatedBlogs = useMemo(
     () =>
       blog
@@ -184,12 +247,12 @@ const BlogPost = () => {
   }
 
   const category =
-    (blog.categories ?? [])
+    (article?.categories ?? [])
       .map(getName)
       .find(Boolean) || "Networking";
 
-  const author = getAuthor(blog);
-  const image = getImage(blog);
+  const author = getAuthor(article ?? blog);
+  const image = getImage(article ?? blog);
 
   return (
     <div className="min-h-screen bg-[#08050D] text-white">
@@ -203,9 +266,7 @@ const BlogPost = () => {
         />
 
         <div className="absolute inset-0 bg-[#08040D]/85" />
-
         <div className="absolute inset-0 bg-gradient-to-b from-[#12061E]/70 via-[#09040D]/85 to-[#08050D]" />
-
         <div className="absolute -top-40 left-1/3 h-[650px] w-[650px] rounded-full bg-[#7C3AED]/20 blur-[150px]" />
 
         <div
@@ -234,11 +295,11 @@ const BlogPost = () => {
           </div>
 
           <h1 className="mt-7 max-w-[900px] text-[42px] font-black leading-[1.02] tracking-[-2px] sm:text-[56px] lg:text-[70px]">
-            {blog.title}
+            {article?.title}
           </h1>
 
           <p className="mt-7 max-w-[720px] whitespace-pre-line text-[15px] leading-8 text-[#BDB2C7] sm:text-[17px]">
-            {blog.description ||
+            {article?.description ||
               "Explore practical networking knowledge and IT skills."}
           </p>
 
@@ -263,9 +324,9 @@ const BlogPost = () => {
 
             <div className="text-[11px] text-[#95899F]">
               {formatDate(
-                blog.publishedAt ||
-                  blog.createdAt ||
-                  blog.updatedAt
+                article?.publishedAt ||
+                  article?.createdAt ||
+                  article?.updatedAt
               )}
             </div>
           </div>
@@ -301,38 +362,37 @@ const BlogPost = () => {
 
               <section id="article-content">
                 <h2 className="text-2xl font-black sm:text-3xl">
-                  {blog.title}
+                  {article?.title}
                 </h2>
 
-                {blog.description && (
+                {article?.description && (
                   <p className="mt-6 whitespace-pre-line text-[16px] leading-8 text-[#D5CCD9]">
-                    {blog.description}
+                    {article?.description}
                   </p>
                 )}
 
-                {blog.rawHTML ? (
+                {contentLoading ? (
+                  <p className="mt-8 text-[#BEB3C9]">Loading full article...</p>
+                ) : contentError ? (
+                  <p className="mt-8 text-red-400" role="alert">{contentError}</p>
+                ) : safeArticleHTML ? (
                   <div
                     className="blog-article-content mt-8 break-words text-[15px] leading-8 text-[#BEB3C9] [&_a]:text-[#C084FC] [&_a]:underline [&_blockquote]:my-6 [&_blockquote]:border-l-2 [&_blockquote]:border-[#7C3AED] [&_blockquote]:pl-5 [&_h1]:mb-5 [&_h1]:mt-10 [&_h1]:text-3xl [&_h1]:font-black [&_h2]:mb-4 [&_h2]:mt-9 [&_h2]:text-2xl [&_h2]:font-black [&_h3]:mb-3 [&_h3]:mt-7 [&_h3]:text-xl [&_h3]:font-bold [&_img]:my-7 [&_img]:h-auto [&_img]:max-w-full [&_li]:ml-6 [&_li]:list-disc [&_ol]:my-5 [&_p]:mb-5 [&_ul]:my-5"
-                    dangerouslySetInnerHTML={{
-                      __html: blog.rawHTML,
-                    }}
+                    dangerouslySetInnerHTML={{ __html: safeArticleHTML }}
                   />
                 ) : (
                   <p className="mt-6 text-[15px] leading-8 text-[#9F94A8]">
-                    The API returned this article's title and
-                    description, but no rawHTML article body.
-                    Add the content field returned by your API
-                    if you want the full article displayed here.
+                    This article has no body content available from the HighLevel API.
                   </p>
                 )}
               </section>
 
               {/* FEATURED IMAGE */}
-              {blog.imageUrl && (
+              {article?.imageUrl && (
                 <div className="mt-10 overflow-hidden rounded-[24px] border border-white/10">
                   <img
-                    src={blog.imageUrl}
-                    alt={blog.imageAltText || blog.title}
+                    src={article?.imageUrl}
+                    alt={article?.imageAltText || article?.title || "Article image"}
                     loading="lazy"
                     onError={(event) => {
                       event.currentTarget.src = FALLBACK_IMAGE;
@@ -343,8 +403,8 @@ const BlogPost = () => {
               )}
 
               {/* TOPICS */}
-              {((blog.tags ?? []).length > 0 ||
-                (blog.categories ?? []).length > 0) && (
+              {((article?.tags ?? []).length > 0 ||
+                (article?.categories ?? []).length > 0) && (
                 <section id="article-tags" className="mt-12">
                   <h2 className="text-xs font-bold uppercase tracking-[2px] text-[#A855F7]">
                     Topics covered
@@ -352,8 +412,8 @@ const BlogPost = () => {
 
                   <div className="mt-5 flex flex-wrap gap-2">
                     {[
-                      ...(blog.categories ?? []),
-                      ...(blog.tags ?? []),
+                      ...(article?.categories ?? []),
+                      ...(article?.tags ?? []),
                     ]
                       .map(getName)
                       .filter(Boolean)

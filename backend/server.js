@@ -46,12 +46,28 @@ app.use(
 );
 
 // CORS
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://packetpros.org",
+  "https://www.packetpros.org",
+  "https://techychris.com",
+  "https://www.techychris.com",
+];
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3100", "https://www.techychris.com"],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Origin not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
+    optionsSuccessStatus: 204,
   })
 );
 app.options("/*splat", cors());
