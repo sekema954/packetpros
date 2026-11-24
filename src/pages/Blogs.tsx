@@ -7,7 +7,7 @@ import { LoadingSpinner } from "../components/loading";
 
 // IMPORTANT: Replace this with your actual published HighLevel blog URL.
 // Example format: https://your-domain.com/blog
-const HIGHLEVEL_BLOG_URL = "http://localhost:3400/blog";
+const HIGHLEVEL_BLOG_URL = "https://www.packetpros.org/blog";
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=85";
 

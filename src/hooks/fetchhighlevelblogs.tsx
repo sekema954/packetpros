@@ -38,6 +38,8 @@ export type Blog = {
   imageUrl?: string;
   imageAltText?: string;
   rawHTML?: string;
+  content?: string;
+  body?: string;
   author?: HighLevelAuthor | string;
   updatedBy?: string;
   categories?: HighLevelCategory[];

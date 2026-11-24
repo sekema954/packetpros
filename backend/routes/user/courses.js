@@ -1,8 +1,6 @@
 
 const express = require("express");
-
 const router = express.Router();
-
 const HIGHLEVEL_API = "https://services.leadconnectorhq.com";
 
 const COURSES = [
