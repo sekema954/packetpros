@@ -6,7 +6,7 @@ const navLinks = [
   { name: 'Academy', path: '/academy' },
   { name: 'PacketPros', path: '/packetpros' },
   { name: 'Community', path: '/community' },
-  //{ name: 'Resources', path: '/resources' },
+  { name: 'Resources', path: '/resources' },
   { name: 'Contact', path: '/contact' },
 ]
 function MenuIcon({ open }: { open: boolean }) {
@@ -204,18 +204,7 @@ export const Navbar = () => {
                           <a
                             href="/resources"
                             onClick={closeMenu}
-                            className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.06] transition-all">
-                            <div className="w-9 h-9 rounded-lg bg-[#7C3AED]/15 border border-[#A855F7]/20 flex items-center justify-center text-[#C084FC]">
-                              ↓
-                            </div>
-                            <div>
-                              <div className="text-[13px] font-bold text-white">
-                                All Resources
-                              </div>
-                              <div className="text-[10px] text-[#9589A4] mt-0.5">
-                                Downloads & guides
-                              </div>
-                            </div>
+                            className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.06] transition-all">                         
                           </a>
                         </div>
                       </div>

@@ -5,7 +5,7 @@ import { Routes, Route, Outlet } from 'react-router-dom'
 import { Home } from './pages/Home'
 import { Academy } from './pages/Academy'
 import { Community } from './pages/Community'
-//import { Resources } from './pages/Resources'
+import { Resources } from './pages/Resources'
 import { About } from './pages/About'
 import { Contact } from './pages/Contact'
 import { Navbar } from './components/Navbar'
@@ -39,7 +39,7 @@ const App = () => {
           <Route path='/' element={<Home />} />
           <Route path='/academy' element={<Academy/>} />
           <Route path='/community' element={<Community />} />
-          {/**<Route path='/resources' element={<Resources />} />**/}
+          <Route path='/resources' element={<Resources />} />
           <Route path='/about' element={<About />} />
           <Route path='/blogs' element={<Blogs />} />
           <Route path='/videos' element={<Videos />} />
