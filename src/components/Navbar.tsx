@@ -6,7 +6,7 @@ const navLinks = [
   { name: 'Academy', path: '/academy' },
   { name: 'PacketPros', path: '/packetpros' },
   { name: 'Community', path: '/community' },
-  { name: 'Resources', path: '/resources' },
+  //{ name: 'Resources', path: '/resources' },
   { name: 'Contact', path: '/contact' },
 ]
 function MenuIcon({ open }: { open: boolean }) {
