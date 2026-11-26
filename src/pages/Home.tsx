@@ -4,7 +4,7 @@ import WhyPacketPros from '../sections/whypacketPros'
 import About from '../sections/About'
 import { Book } from 'lucide-react';
 const VIDEO_URL =
-  'https://storage.googleapis.com/video_bucket_20/Website%20testimonials%20correction.mp4'
+  'https://storage.googleapis.com/video_bucket_20/C0523_6.mp4'
 
 export function Icon({
   type,

@@ -476,7 +476,7 @@ const BlogPost = () => {
                     </p>
 
                     <a
-                      href="/academy"
+                      href="https://www.packetpros.org/signup"
                       className="mt-5 flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#9333EA] to-[#6D28D9] py-3 text-[11px] font-bold"
                     >
                       Explore PacketPros →

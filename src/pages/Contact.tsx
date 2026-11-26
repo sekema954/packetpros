@@ -6,8 +6,16 @@ export const Contact = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  // ======================================================
+  // CONTACT FORM SUBMISSION
+  // ======================================================
+
+  const handleSubmit = async (
+    e: React.FormEvent<HTMLFormElement>
+  ) => {
     e.preventDefault()
+
+    if (loading) return
 
     setLoading(true)
     setError('')
@@ -16,36 +24,107 @@ export const Contact = () => {
     const formData = new FormData(form)
 
     const data = {
-      firstname: formData.get('firstname'),
-      lastname: formData.get('lastname'),
-      email: formData.get('email'),
-      reason: formData.get('reason'),
-      message: formData.get('message'),
+      firstname: String(
+        formData.get('firstname') || ''
+      ).trim(),
+
+      lastname: String(
+        formData.get('lastname') || ''
+      ).trim(),
+
+      email: String(
+        formData.get('email') || ''
+      ).trim().toLowerCase(),
+
+      reason: String(
+        formData.get('reason') || ''
+      ).trim(),
+
+      message: String(
+        formData.get('message') || ''
+      ).trim(),
     }
 
     try {
+      // Validate required fields
+      if (
+        !data.firstname ||
+        !data.lastname ||
+        !data.email ||
+        !data.reason ||
+        !data.message
+      ) {
+        throw new Error('Please complete all required fields.')
+      }
+
+      // Validate email address
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+        throw new Error('Please enter a valid email address.')
+      }
+
+      // Validate message length
+      if (data.message.length > 5000) {
+        throw new Error(
+          'Your message cannot exceed 5000 characters.'
+        )
+      }
+
+      // Local development uses VITE_DEV_URL.
+      // Production uses the same-origin backend.
+      const apiBase = import.meta.env.DEV
+        ? (import.meta.env.VITE_DEV_URL || '').replace(/\/+$/, '')
+        : ''
+
+      // ==================================================
+      // SEND FORM TO EXPRESS BACKEND
+      // Backend saves to MongoDB and triggers GHL webhook.
+      // ==================================================
+
       const response = await fetch(
-        `${import.meta.env.VITE_DEV_URL}/api/send-contact`,
+        `${apiBase}/api/send-contact`,
         {
           method: 'POST',
+
           headers: {
             'Content-Type': 'application/json',
           },
+
           body: JSON.stringify(data),
         }
       )
 
       const result = await response.json()
 
-      if (!response.ok) {
-        throw new Error(result.message || 'Failed to send message')
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message || 'Failed to send message.'
+        )
       }
 
-      setSubmitted(true)
+      // Check GHL webhook status returned by backend.
+      if (result.webhookTriggered === true) {
+        console.log(
+          '[CONTACT] GHL webhook triggered successfully.'
+        )
+      } else {
+        console.warn(
+          '[CONTACT] Message saved, but GHL webhook was not confirmed.'
+        )
+      }
+
+      // Show success because the inquiry was saved.
       form.reset()
+      setSubmitted(true)
+
     } catch (err) {
-      console.error('Contact form error:', err)
-      setError('Something went wrong. Please try again.')
+      console.error('[CONTACT FORM ERROR]', err)
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong. Please try again.'
+      )
+
     } finally {
       setLoading(false)
     }
@@ -145,6 +224,7 @@ export const Contact = () => {
                         height="14"
                         rx="2"
                       />
+
                       <path d="m3 7 9 6 9-6" />
                     </svg>
                   </div>
@@ -176,8 +256,11 @@ export const Contact = () => {
                       strokeWidth="1.8"
                     >
                       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+
                       <circle cx="9" cy="7" r="4" />
+
                       <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+
                       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                     </svg>
                   </div>
@@ -209,7 +292,9 @@ export const Contact = () => {
                       strokeWidth="1.8"
                     >
                       <path d="M3 10 12 5l9 5-9 5-9-5Z" />
+
                       <path d="M7 12.5V17c3 2 7 2 10 0v-4.5" />
+
                       <path d="M21 10v6" />
                     </svg>
                   </div>
@@ -276,6 +361,9 @@ export const Contact = () => {
                       name="firstname"
                       type="text"
                       required
+                      maxLength={100}
+                      autoComplete="given-name"
+                      disabled={loading}
                       placeholder="Chris"
                       className="w-full h-12 rounded-xl border border-[#DED9E6] bg-[#FBFAFD] px-4 text-[13px] text-[#211C2D] outline-none placeholder:text-[#AAA4B2] focus:border-[#8B5CF6] focus:ring-4 focus:ring-[#7C3AED]/10 transition-all"
                     />
@@ -297,6 +385,9 @@ export const Contact = () => {
                       name="lastname"
                       type="text"
                       required
+                      maxLength={100}
+                      autoComplete="family-name"
+                      disabled={loading}
                       placeholder="Quashie"
                       className="w-full h-12 rounded-xl border border-[#DED9E6] bg-[#FBFAFD] px-4 text-[13px] text-[#211C2D] outline-none placeholder:text-[#AAA4B2] focus:border-[#8B5CF6] focus:ring-4 focus:ring-[#7C3AED]/10 transition-all"
                     />
@@ -320,6 +411,9 @@ export const Contact = () => {
                     name="email"
                     type="email"
                     required
+                    maxLength={254}
+                    autoComplete="email"
+                    disabled={loading}
                     placeholder="you@example.com"
                     className="w-full h-12 rounded-xl border border-[#DED9E6] bg-[#FBFAFD] px-4 text-[13px] text-[#211C2D] outline-none placeholder:text-[#AAA4B2] focus:border-[#8B5CF6] focus:ring-4 focus:ring-[#7C3AED]/10 transition-all"
                   />
@@ -340,6 +434,7 @@ export const Contact = () => {
                     id="reason"
                     name="reason"
                     required
+                    disabled={loading}
                     defaultValue=""
                     className="w-full h-12 rounded-xl border border-[#DED9E6] bg-[#FBFAFD] px-4 text-[13px] text-[#211C2D] outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-[#7C3AED]/10 transition-all"
                   >
@@ -377,7 +472,8 @@ export const Contact = () => {
 
                   <label
                     htmlFor="message"
-                    className="block text-[12px] font-bold text-[#393346] mb-2">
+                    className="block text-[12px] font-bold text-[#393346] mb-2"
+                  >
                     Message
                   </label>
 
@@ -386,6 +482,8 @@ export const Contact = () => {
                     name="message"
                     required
                     rows={6}
+                    maxLength={5000}
+                    disabled={loading}
                     placeholder="Tell us how we can help..."
                     className="w-full resize-none rounded-xl border border-[#DED9E6] bg-[#FBFAFD] px-4 py-3.5 text-[13px] leading-6 text-[#211C2D] outline-none placeholder:text-[#AAA4B2] focus:border-[#8B5CF6] focus:ring-4 focus:ring-[#7C3AED]/10 transition-all"
                   />
@@ -394,20 +492,52 @@ export const Contact = () => {
 
                 {/* Error */}
                 {error && (
-                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                  <div
+                    role="alert"
+                    className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3"
+                  >
                     <p className="text-center text-[12px] text-red-600">
                       {error}
                     </p>
                   </div>
                 )}
 
-                {/* Submit */}
+                {/* Submit Button */}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full mt-6 h-12 rounded-xl bg-[#7C3AED] text-white text-[13px] font-bold hover:bg-[#6D28D9] hover:-translate-y-0.5 transition-all shadow-[0_12px_30px_-15px_rgba(124,58,237,.9)] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                  aria-busy={loading}
+                  className="w-full mt-6 h-12 rounded-xl bg-[#7C3AED] text-white text-[13px] font-bold hover:bg-[#6D28D9] hover:-translate-y-0.5 transition-all shadow-[0_12px_30px_-15px_rgba(124,58,237,.9)] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-2"
                 >
-                  {loading ? 'Sending...' : 'Send Message'}
+                  {loading ? (
+                    <>
+                      <svg
+                        className="animate-spin h-4 w-4 text-white"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z"
+                        />
+                      </svg>
+
+                      Sending...
+                    </>
+                  ) : (
+                    'Send Message'
+                  )}
                 </button>
 
                 <p className="mt-4 text-center text-[11px] text-[#8A8494]">
@@ -419,7 +549,10 @@ export const Contact = () => {
             ) : (
 
               /* Success State */
-              <div className="min-h-[520px] flex flex-col items-center justify-center text-center px-5">
+              <div
+                role="status"
+                className="min-h-[520px] flex flex-col items-center justify-center text-center px-5"
+              >
 
                 <div className="w-16 h-16 rounded-2xl bg-[#EEE8FC] flex items-center justify-center">
 
@@ -475,50 +608,67 @@ export const Contact = () => {
             <h3 className="mt-5 text-[15px] font-bold text-[#211B2E]">
               Looking for courses?
             </h3>
+
             <p className="mt-2 text-[12px] leading-5 text-[#777081]">
               Explore the PacketPros Academy and find the right learning path.
             </p>
+
             <span className="inline-block mt-4 text-[11px] font-bold text-[#7C3AED]">
               Explore Academy →
             </span>
+
           </a>
 
           {/* Discord */}
           <a
             href={Socials.discordLink}
-            className="group rounded-2xl border border-[#E4DFEA] bg-white/80 backdrop-blur-sm p-6 hover:border-[#C9B8F5] hover:bg-white transition-all">
+            className="group rounded-2xl border border-[#E4DFEA] bg-white/80 backdrop-blur-sm p-6 hover:border-[#C9B8F5] hover:bg-white transition-all"
+          >
+
             <div className="w-9 h-9 rounded-lg bg-[#EEE8FC] flex items-center justify-center text-[#7C3AED] font-bold">
               02
             </div>
+
             <h3 className="mt-5 text-[15px] font-bold text-[#211B2E]">
               Need technical help?
             </h3>
+
             <p className="mt-2 text-[12px] leading-5 text-[#777081]">
               Join the community and connect with other IT learners.
             </p>
+
             <span className="inline-block mt-4 text-[11px] font-bold text-[#7C3AED]">
               Join Discord →
             </span>
+
           </a>
+
           {/* Resources */}
           <a
             href="/resources"
-            className="group rounded-2xl border border-[#E4DFEA] bg-white/80 backdrop-blur-sm p-6 hover:border-[#C9B8F5] hover:bg-white transition-all">
+            className="group rounded-2xl border border-[#E4DFEA] bg-white/80 backdrop-blur-sm p-6 hover:border-[#C9B8F5] hover:bg-white transition-all"
+          >
 
             <div className="w-9 h-9 rounded-lg bg-[#EEE8FC] flex items-center justify-center text-[#7C3AED] font-bold">
               03
             </div>
+
             <h3 className="mt-5 text-[15px] font-bold text-[#211B2E]">
               Looking for resources?
             </h3>
+
             <p className="mt-2 text-[12px] leading-5 text-[#777081]">
               Browse tools, guides, and other resources for your IT journey.
             </p>
+
             <span className="inline-block mt-4 text-[11px] font-bold text-[#7C3AED]">
               View Resources →
             </span>
+
           </a>
+
         </div>
+
       </section>
     </main>
   )
