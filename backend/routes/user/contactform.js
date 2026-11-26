@@ -1,20 +1,11 @@
 const express = require("express");
-const nodemailer = require("nodemailer");
 const Contact = require("../../models/contact");
 require("dotenv").config();
 
 const router = express.Router();
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
-
-const HIGHLEVEL_API_VERSION =
-  process.env.HIGHLEVEL_API_VERSION || "2021-07-28";
+const HIGHLEVEL_CONTACT_WEBHOOK_URL =
+  process.env.HIGHLEVEL_CONTACT_WEBHOOK_URL;
 
 const VALID_REASONS = [
   "Academy / Courses",
@@ -26,59 +17,40 @@ const VALID_REASONS = [
 
 const MAX_MESSAGE_LENGTH = 5000;
 
-// Escape user input before inserting it into HTML emails
-const escapeHtml = (value = "") =>
-  String(value).replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[char]);
+// ======================================================
+// SEND CONTACT SUBMISSION TO GHL WEBHOOK
+// ======================================================
 
-// Create or update the contact in HighLevel.
-// Uses the upsert endpoint so an existing email does not fail.
-async function syncToHighLevel(clean) {
-  if (!process.env.HIGHLEVEL_API_TOKEN || !process.env.HIGHLEVEL_LOCATION_ID) {
-    throw new Error("HighLevel is not configured.");
+async function sendToHighLevel(contact) {
+  if (!HIGHLEVEL_CONTACT_WEBHOOK_URL) {
+    throw new Error(
+      "HIGHLEVEL_CONTACT_WEBHOOK_URL is not configured."
+    );
   }
 
-  // Only send custom fields whose IDs are configured.
-  const customFields = [];
-
-  if (process.env.HIGHLEVEL_REASON_FIELD_ID) {
-    customFields.push({
-      id: process.env.HIGHLEVEL_REASON_FIELD_ID,
-      field_value: clean.reason,
-    });
-  }
-
-  if (process.env.HIGHLEVEL_MESSAGE_FIELD_ID) {
-    customFields.push({
-      id: process.env.HIGHLEVEL_MESSAGE_FIELD_ID,
-      field_value: clean.message,
-    });
-  }
+  const payload = {
+    contactId: contact._id.toString(),
+    firstname: contact.firstname,
+    lastname: contact.lastname,
+    email: contact.email,
+    reason: contact.reason,
+    message: contact.message,
+    source: "PacketPros Website",
+    submittedAt: new Date().toISOString(),
+  };
 
   const response = await fetch(
-    "https://services.leadconnectorhq.com/contacts/upsert",
+    HIGHLEVEL_CONTACT_WEBHOOK_URL,
     {
       method: "POST",
+
       headers: {
-        Authorization: `Bearer ${process.env.HIGHLEVEL_API_TOKEN}`,
         "Content-Type": "application/json",
         Accept: "application/json",
-        Version: HIGHLEVEL_API_VERSION,
       },
-      body: JSON.stringify({
-        locationId: process.env.HIGHLEVEL_LOCATION_ID,
-        firstName: clean.firstname,
-        lastName: clean.lastname,
-        email: clean.email,
-        source: "Website Contact Form",
-        tags: ["Website Contact Form"],
-        ...(customFields.length ? { customFields } : {}),
-      }),
+
+      body: JSON.stringify(payload),
+
       signal: AbortSignal.timeout(15000),
     }
   );
@@ -94,26 +66,52 @@ async function syncToHighLevel(clean) {
   }
 
   if (!response.ok) {
-    // Log the real reason GHL rejected the request.
-    console.error("HighLevel contact sync failed:", {
+    console.error("[CONTACT WEBHOOK FAILED]", {
       status: response.status,
-      response: data,
     });
 
-    throw new Error(`HighLevel request failed (${response.status}).`);
+    throw new Error(
+      `HighLevel webhook failed (${response.status}).`
+    );
   }
 
-  return data.contact?.id || null;
+  console.log("[CONTACT WEBHOOK SUCCESS]", {
+    submissionId: contact._id.toString(),
+    status: response.status,
+  });
+
+  return data;
 }
+
+// ======================================================
+// CONTACT FORM ENDPOINT
+// POST /api/send-contact
+// ======================================================
 
 router.post("/send-contact", async (req, res) => {
   try {
-    const { firstname, lastname, email, reason, message } = req.body || {};
+    const {
+      firstname,
+      lastname,
+      email,
+      reason,
+      message,
+    } = req.body || {};
 
-    // Validate required fields
+    // ==================================================
+    // VALIDATE REQUIRED FIELDS
+    // ==================================================
+
     if (
-      ![firstname, lastname, email, reason, message].every(
-        (value) => typeof value === "string" && value.trim()
+      ![
+        firstname,
+        lastname,
+        email,
+        reason,
+        message,
+      ].every(
+        (value) =>
+          typeof value === "string" && value.trim()
       )
     ) {
       return res.status(400).json({
@@ -121,6 +119,10 @@ router.post("/send-contact", async (req, res) => {
         message: "All fields are required.",
       });
     }
+
+    // ==================================================
+    // NORMALIZE FORM DATA
+    // ==================================================
 
     const clean = {
       firstname: firstname.trim(),
@@ -130,6 +132,21 @@ router.post("/send-contact", async (req, res) => {
       message: message.trim(),
     };
 
+    // ==================================================
+    // VALIDATE FIELD LENGTHS
+    // ==================================================
+
+    if (
+      clean.firstname.length > 100 ||
+      clean.lastname.length > 100 ||
+      clean.email.length > 254
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "One or more fields are too long.",
+      });
+    }
+
     if (clean.message.length > MAX_MESSAGE_LENGTH) {
       return res.status(400).json({
         success: false,
@@ -137,12 +154,22 @@ router.post("/send-contact", async (req, res) => {
       });
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean.email)) {
+    // ==================================================
+    // VALIDATE EMAIL ADDRESS
+    // ==================================================
+
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean.email)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Please provide a valid email address.",
       });
     }
+
+    // ==================================================
+    // VALIDATE CONTACT REASON
+    // ==================================================
 
     if (!VALID_REASONS.includes(clean.reason)) {
       return res.status(400).json({
@@ -151,87 +178,65 @@ router.post("/send-contact", async (req, res) => {
       });
     }
 
-    // 1. Save the inquiry. If this fails, the request fails.
+    // ==================================================
+    // STEP 1: SAVE CONTACT TO MONGODB
+    // ==================================================
+
     const savedContact = await Contact.create(clean);
 
-    // Escape submitted content before rendering HTML
-    const first = escapeHtml(clean.firstname);
-    const last = escapeHtml(clean.lastname);
-    const safeEmail = escapeHtml(clean.email);
-    const safeReason = escapeHtml(clean.reason);
-    const safeMessage = escapeHtml(clean.message).replace(/\r?\n/g, "<br>");
+    console.log("[CONTACT SAVED]", {
+      submissionId: savedContact._id.toString(),
+    });
 
-    const htmlToOwner = `
-      <div style="font-family:Arial,sans-serif;padding:20px">
-        <h2>New Contact Submission</h2>
-        <p><strong>Name:</strong> ${first} ${last}</p>
-        <p><strong>Email:</strong> ${safeEmail}</p>
-        <p><strong>Reason:</strong> ${safeReason}</p>
-        <p><strong>Message:</strong></p>
-        <div style="background:#f4f4f9;padding:15px">
-          ${safeMessage}
-        </div>
-      </div>
-    `;
+    // ==================================================
+    // STEP 2: TRIGGER GHL WORKFLOW
+    // ==================================================
 
-    const htmlToSender = `
-      <div style="font-family:Arial,sans-serif;padding:20px">
-        <h2>Thanks for reaching out, ${first}!</h2>
-        <p>
-          I've received your message and will get back to you
-          as soon as possible.
-        </p>
-        <p><strong>Reason:</strong> ${safeReason}</p>
-        <div style="background:#f4f4f9;padding:15px">
-          ${safeMessage}
-        </div>
-        <p>Cheers,<br>Chris</p>
-        <p style="color:#999;font-size:12px">
-          This is an automated confirmation.
-        </p>
-      </div>
-    `;
+    let webhookTriggered = false;
 
-    // 2. CRM sync and both emails are best effort. One failing must
-    //    not stop the others, and must not hide a saved inquiry.
-    const [crm, ownerMail, senderMail] = await Promise.allSettled([
-      syncToHighLevel(clean),
-      transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: process.env.EMAIL_USER,
-        replyTo: clean.email,
-        subject: `New Contact: ${clean.firstname} ${clean.lastname}`,
-        html: htmlToOwner,
-      }),
-      transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: clean.email,
-        subject: "Thanks for contacting me!",
-        html: htmlToSender,
-      }),
-    ]);
+    try {
+      await sendToHighLevel(savedContact);
 
-    if (ownerMail.status === "rejected") {
-      console.error("Owner email failed:", ownerMail.reason?.message);
+      webhookTriggered = true;
+
+    } catch (webhookError) {
+      console.error("[GHL CONTACT ERROR]", {
+        submissionId: savedContact._id.toString(),
+        message: webhookError.message,
+      });
+
+      // The contact submission remains saved in MongoDB
+      // even if the GHL webhook fails.
     }
 
-    if (senderMail.status === "rejected") {
-      console.error("Confirmation email failed:", senderMail.reason?.message);
-    }
+    // ==================================================
+    // STEP 3: RETURN RESPONSE TO FRONTEND
+    // ==================================================
 
     return res.status(201).json({
       success: true,
       message: "Contact submitted successfully.",
       submissionId: savedContact._id,
-      crmSynced: crm.status === "fulfilled",
-      highLevelContactId: crm.status === "fulfilled" ? crm.value : null,
+      webhookTriggered,
     });
+
   } catch (error) {
-    console.error("Contact submission error:", error.message);
+    console.error(
+      "[CONTACT SUBMISSION ERROR]",
+      error.message
+    );
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid contact form submission.",
+      });
+    }
 
     return res.status(500).json({
       success: false,
-      message: "An error occurred while processing your submission.",
+      message:
+        "An error occurred while processing your submission.",
     });
   }
 });
